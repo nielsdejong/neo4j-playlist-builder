@@ -9,20 +9,20 @@ from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 user_id = "[ADD YOUR SPOTIFY USER ID HERE]"               # Spotify user ID.
 client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"              # Spotify client ID.
 secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"          # Spotify client secret.
-playlist_uri = "[ADD YOUR PLAYLIST TO SORT HERE]"         # original public playlist with songs to be sorted.
+playlist_uri = "[ADD YOUR PUBLIC PLAYLIST TO SORT HERE]"  # original public playlist with songs to be sorted.
 neo4j_url = "bolt://localhost:7687"                       # bolt url of the neo4j database.
 neo4j_username = "neo4j"                                  # neo4j username. defaults to 'neo4j'.
 neo4j_password = "neo"                                    # neo4j password.
 scope = 'playlist-modify-private'                         # Spotify scope required to manage playlists.
 redirect_uri = 'http://localhost:8888/callback'           # Spotify callback url. Set to localhost for development.
 cache_path = "spotify_cache.tmp"                          # Where spotify caches the session variables.
-create_constraints = False                                # Whether to create constraints in Neo4j.
+create_constraints = True                                 # Whether to create constraints in Neo4j.
 write_to_spotify = True                                   # Whether to write back the generated playlists to spotify.
 plot_kmeans_clusters = False                              # Whether to plot the kmeans clusters used for playlists.
 min_playlist_size = 40                                    # Cut off for playlists to be grouped as 'misc'
 playlist_split_limit = 150                                # min size for playlists to be chopped up in smaller ones.
 playlist_name_prefix = "[Generated]"                      # Prefix for each playlist name
-playlist_desc = 'Generated using neo-playlist-builder.'   # Description of the generated playlists.
+playlist_desc = 'Generated using neo4j-playlist-builder.'   # Description of the generated playlists.
 playlist_keywords_count = 4                               # Number of keywords to use in dynamic playlist names.
 spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=client, client_secret=secret))
 
@@ -30,6 +30,7 @@ spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(cl
 def load_graph_using_spotify_api():
     neo4j = create_neo4j_session(url=neo4j_url, user=neo4j_username, password=neo4j_password)
     if create_constraints:
+        neo4j.run("CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE")
         neo4j.run("CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE")
         neo4j.run("CREATE CONSTRAINT ON (p:Playlist) ASSERT p.name IS UNIQUE")
     neo4j.run("MATCH (n) DETACH DELETE n;")
