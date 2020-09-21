@@ -20,7 +20,7 @@ create_constraints = True                                 # Whether to create co
 write_to_spotify = True  # Whether to write back the generated playlists to spotify.
 plot_kmeans_clusters = False  # Whether to plot the kmeans clusters used for playlists.
 min_playlist_size = 40  # Cut off for playlists to be grouped as 'misc'
-playlist_split_limit = 150  # min size for playlists to be chopped up in smaller ones.
+playlist_split_limit = 160  # min size for playlists to be chopped up in smaller ones.
 playlist_desc = 'Generated using neo4j-playlist-builder.'  # Description of the generated playlists.
 playlist_keywords_count = 3  # Number of keywords to use in dynamic playlist names.
 spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=client, client_secret=secret))
@@ -85,7 +85,7 @@ def name_playlists_based_on_keywords(neo4j):
      WITH p, reduce(allwords = [], n IN names | allwords + n) AS keywords
      UNWIND keywords as keyword
      WITH p, keyword
-     WHERE not keyword  in ["rock", "pop", "mellow", "folk", "new", "house"]
+     WHERE not keyword  in ["pop", "mellow","new", "rock", "folk"]
      WITH p, keyword, count(*) as wordcount order by wordcount desc
     WITH p, reduce(name = '', n IN collect(keyword)[0..""" + str(playlist_keywords_count) + """]| name + ' ' + n) AS name
     WITH p, name,
