@@ -1,7 +1,13 @@
 ## neo4j-playlist-builder
-A tool to generate spotify playlists using Neo4j graph data science.
+A tool to generate Spotify playlists using Neo4j graph data science.
+
 Taking a single (large, public) playlist as an input, the tool uses node similarity algorithms and kmeans clustering to group songs based on genre, energy and mood.
 
+The script is set up to be a complete end-to-end tool for organizing your music:
+- It loads your data directly into Neo4j using the Spotify API...
+- ...runs graph algorithms to build playlists...
+- ...uses keywords to name playlists...
+- ...and eventually creates new playlists in Spotify.
 
 ### Quick setup
 This project uses a single Python script: `neo4j_spotify_playlist_builder.py`.
@@ -29,4 +35,5 @@ Steps:
 7. Run `neo4j_spotify_playlist_builder.py` and watch the magic happen!
 
 ### Notes
-An input playlist *must* be made public for the tool to work. Output playlists will be private by default. 
+- An input playlist *must* be made public for the tool to work. Output playlists will be private by default. 
+- The tool can also be run without creating new playlists in Spotify by disabling the `write_to_spotify` parameter.
