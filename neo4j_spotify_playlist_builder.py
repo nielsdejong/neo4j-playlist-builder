@@ -6,17 +6,17 @@ import pandas as pd
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 # ------------------------------------ Configuration parameters ------------------------------------ #
-user_id = "[ADD YOUR SPOTIFY USER ID HERE]"  # Spotify user ID.
-client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"  # Spotify client ID.
-secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"  # Spotify client secret.
+user_id = "[ADD YOUR SPOTIFY USER ID HERE]"               # Spotify user ID.
+client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"              # Spotify client ID.
+secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"          # Spotify client secret.
 playlist_uri = "[ADD YOUR PUBLIC PLAYLIST TO SORT HERE]"  # original public playlist with songs to be sorted.
-neo4j_url = "bolt://localhost:7687"  # bolt url of the neo4j database.
-neo4j_username = "neo4j"  # neo4j username. defaults to 'neo4j'.
-neo4j_password = "neo"  # neo4j password.
-scope = 'playlist-modify-private'  # Spotify scope required to manage playlists.
-redirect_uri = 'http://localhost:8888/callback'  # Spotify callback url. Set to localhost for development.
-cache_path = "spotify_cache.tmp"  # Where spotify caches the session variables.
-create_constraints = True  # Whether to create constraints in Neo4j.
+neo4j_url = "bolt://localhost:7687"                       # bolt url of the neo4j database.
+neo4j_username = "neo4j"                                  # neo4j username. defaults to 'neo4j'.
+neo4j_password = "neo"                                    # neo4j password.
+scope = 'playlist-modify-private'                         # Spotify scope required to manage playlists.
+redirect_uri = 'http://localhost:8888/callback'           # Spotify callback url. Set to localhost for development.
+cache_path = "spotify_cache.tmp"                          # Where spotify caches the session variables.
+create_constraints = True                                 # Whether to create constraints.
 write_to_spotify = True  # Whether to write back the generated playlists to spotify.
 plot_kmeans_clusters = False  # Whether to plot the kmeans clusters used for playlists.
 min_playlist_size = 40  # Cut off for playlists to be grouped as 'misc'
@@ -77,7 +77,7 @@ def load_graph_using_spotify_api():
 
 
 def name_playlists_based_on_keywords(neo4j):
-    neo4j.run("""
+    neo4j.run("""    
     MATCH (g:Genre)<-[:HAS_GENRE]-(a:Artist)<-[:HAS_ARTIST]-(t:Track)
     WITH  g, t
     MATCH (t:Track)-[:IN_PLAYLIST]->(p:Playlist)
@@ -85,13 +85,13 @@ def name_playlists_based_on_keywords(neo4j):
      WITH p, reduce(allwords = [], n IN names | allwords + n) AS keywords
      UNWIND keywords as keyword
      WITH p, keyword
-     WHERE not keyword  in ["rock", "pop", "mellow", "folk"]
+     WHERE not keyword  in ["rock", "pop", "mellow", "folk", "new", "house"]
      WITH p, keyword, count(*) as wordcount order by wordcount desc
     WITH p, reduce(name = '', n IN collect(keyword)[0..""" + str(playlist_keywords_count) + """]| name + ' ' + n) AS name
     WITH p, name,
     CASE WHEN p.energy <= 0.25 THEN 'serene' WHEN p.energy <= 0.50 THEN 'calm' 
     WHEN p.energy <= 0.75 THEN 'active' ELSE 'energetic' END AS energy,
-    CASE WHEN p.valence <= 0.25 THEN 'heavy-hearted' WHEN p.valence <= 0.50 THEN 'low mood' 
+    CASE WHEN p.valence <= 0.25 THEN 'heavy-hearted' WHEN p.valence <= 0.50 THEN 'low'
     WHEN p.valence <= 0.75 THEN 'lively' ELSE 'cheerful' END AS mood
     SET p.name = "[NPB] " + apoc.text.capitalizeAll(name) + " - " + energy +", " + mood
     """)
