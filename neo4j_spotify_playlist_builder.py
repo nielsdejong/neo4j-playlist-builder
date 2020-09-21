@@ -6,24 +6,23 @@ import pandas as pd
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 # ------------------------------------ Configuration parameters ------------------------------------ #
-user_id = "[ADD YOUR SPOTIFY USER ID HERE]"               # Spotify user ID.
-client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"              # Spotify client ID.
-secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"          # Spotify client secret.
+user_id = "[ADD YOUR SPOTIFY USER ID HERE]"  # Spotify user ID.
+client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"  # Spotify client ID.
+secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"  # Spotify client secret.
 playlist_uri = "[ADD YOUR PUBLIC PLAYLIST TO SORT HERE]"  # original public playlist with songs to be sorted.
-neo4j_url = "bolt://localhost:7687"                       # bolt url of the neo4j database.
-neo4j_username = "neo4j"                                  # neo4j username. defaults to 'neo4j'.
-neo4j_password = "neo"                                    # neo4j password.
-scope = 'playlist-modify-private'                         # Spotify scope required to manage playlists.
-redirect_uri = 'http://localhost:8888/callback'           # Spotify callback url. Set to localhost for development.
-cache_path = "spotify_cache.tmp"                          # Where spotify caches the session variables.
-create_constraints = True                                 # Whether to create constraints in Neo4j.
-write_to_spotify = True                                   # Whether to write back the generated playlists to spotify.
-plot_kmeans_clusters = False                              # Whether to plot the kmeans clusters used for playlists.
-min_playlist_size = 40                                    # Cut off for playlists to be grouped as 'misc'
-playlist_split_limit = 150                                # min size for playlists to be chopped up in smaller ones.
-playlist_name_prefix = "[Generated]"                      # Prefix for each playlist name
-playlist_desc = 'Generated using neo4j-playlist-builder.'   # Description of the generated playlists.
-playlist_keywords_count = 4                               # Number of keywords to use in dynamic playlist names.
+neo4j_url = "bolt://localhost:7687"  # bolt url of the neo4j database.
+neo4j_username = "neo4j"  # neo4j username. defaults to 'neo4j'.
+neo4j_password = "neo"  # neo4j password.
+scope = 'playlist-modify-private'  # Spotify scope required to manage playlists.
+redirect_uri = 'http://localhost:8888/callback'  # Spotify callback url. Set to localhost for development.
+cache_path = "spotify_cache.tmp"  # Where spotify caches the session variables.
+create_constraints = True  # Whether to create constraints in Neo4j.
+write_to_spotify = True  # Whether to write back the generated playlists to spotify.
+plot_kmeans_clusters = False  # Whether to plot the kmeans clusters used for playlists.
+min_playlist_size = 40  # Cut off for playlists to be grouped as 'misc'
+playlist_split_limit = 150  # min size for playlists to be chopped up in smaller ones.
+playlist_desc = 'Generated using neo4j-playlist-builder.'  # Description of the generated playlists.
+playlist_keywords_count = 3  # Number of keywords to use in dynamic playlist names.
 spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=client, client_secret=secret))
 
 
@@ -64,12 +63,12 @@ def load_graph_using_spotify_api():
     print("Clustering genres using the GDS library and creating super-genres...")
     cluster_genres_with_gds(neo4j)
 
-    # Time for cypher magic - give our communities some names
-    print("Naming supergenres...")
-    name_super_genres_based_on_keywords(neo4j)
-
     print("Creating playlists based on supergenres and song properties...")
     generate_playlists(neo4j)
+
+    # Time for cypher magic - give our communities some names
+    print("Naming playlists...")
+    name_playlists_based_on_keywords(neo4j)
 
     if write_to_spotify:
         print("Writing new playlists back to Spotify...")
@@ -77,19 +76,25 @@ def load_graph_using_spotify_api():
     print("Done!")
 
 
-def name_super_genres_based_on_keywords(neo4j):
+def name_playlists_based_on_keywords(neo4j):
     neo4j.run("""
     MATCH (g:Genre)<-[:HAS_GENRE]-(a:Artist)<-[:HAS_ARTIST]-(t:Track)
-    WITH g.community as community, collect(split(g.name, ' ')) as names, count(DISTiNCT t) as trackCount
-    WITH community, reduce(allwords = [], n IN names | allwords + n) AS keywords
-    MATCH (g:SuperGenre{id: community})
-    UNWIND keywords as keyword
-    WITH g, keyword, count(*) as wordcount ORDER BY wordcount DESC
-    WITH g, collect(keyword)[0.."""+str(playlist_keywords_count)+"""] as keywords
-    WITH g, reduce(name = '', n IN keywords| name + ' ' + n) AS name
-    SET g.name = apoc.text.capitalizeAll(name)
+    WITH  g, t
+    MATCH (t:Track)-[:IN_PLAYLIST]->(p:Playlist)
+    WITH p, collect(split(g.name, ' ')) as names
+     WITH p, reduce(allwords = [], n IN names | allwords + n) AS keywords
+     UNWIND keywords as keyword
+     WITH p, keyword
+     WHERE not keyword  in ["rock", "pop", "mellow", "folk"]
+     WITH p, keyword, count(*) as wordcount order by wordcount desc
+    WITH p, reduce(name = '', n IN collect(keyword)[0..""" + str(playlist_keywords_count) + """]| name + ' ' + n) AS name
+    WITH p, name,
+    CASE WHEN p.energy <= 0.25 THEN 'serene' WHEN p.energy <= 0.50 THEN 'calm' 
+    WHEN p.energy <= 0.75 THEN 'active' ELSE 'energetic' END AS energy,
+    CASE WHEN p.valence <= 0.25 THEN 'heavy-hearted' WHEN p.valence <= 0.50 THEN 'low mood' 
+    WHEN p.valence <= 0.75 THEN 'lively' ELSE 'cheerful' END AS mood
+    SET p.name = "[NPB] " + apoc.text.capitalizeAll(name) + " - " + energy +", " + mood
     """)
-    neo4j.run("""MATCH (g:SuperGenre) WHERE g.id = -1 SET g.name = 'Miscellaneous' """)
 
 
 def cluster_genres_with_gds(neo4j):
@@ -125,7 +130,7 @@ def cluster_genres_with_gds(neo4j):
     result = neo4j.run("""
             MATCH (g:Genre)<-[:HAS_GENRE]-(a:Artist)<-[:HAS_ARTIST]-(t:Track)
             WITH g.community as community, collect(g) as genres, count(DISTiNCT t) as trackCount
-            WHERE trackCount < """+str(min_playlist_size)+"""
+            WHERE trackCount < """ + str(min_playlist_size) + """
             UNWIND genres as g
             SET g.community = -1
     """)
@@ -258,7 +263,8 @@ def make_playlists_for_big_supergenre(neo4j, super_genre_id=313):
     """, parameters={'superGenre': super_genre_id}).data()
     x = pd.DataFrame.from_records(result)
 
-    kmeans = KMeans(n_clusters=int(len(result) / playlist_split_limit) + 1, random_state=0).fit(x[['energy', 'valence']])
+    kmeans = KMeans(n_clusters=int(len(result) / playlist_split_limit) + 1, random_state=0).fit(
+        x[['energy', 'valence']])
     if plot_kmeans_clusters:
         plt.scatter(x['energy'], x['valence'], c=kmeans.labels_, s=50, cmap='viridis')
         plt.show()
@@ -268,7 +274,6 @@ def make_playlists_for_big_supergenre(neo4j, super_genre_id=313):
     neo4j.run("""UNWIND $output as row 
     MATCH (s:SuperGenre{id: $superGenre})--(t:Track{id: row[0]})
     MERGE (p:Playlist{id: $superGenre + "-" + row[1]})
-    SET p.name = "[Generated] " + s.name + " " + (row[1]+1)
     SET p.energy = $centers[row[1]][0]
     SET p.valence = $centers[row[1]][1]
     CREATE (t)-[:IN_PLAYLIST]->(p)""",
@@ -276,11 +281,9 @@ def make_playlists_for_big_supergenre(neo4j, super_genre_id=313):
 
 
 def make_playlist_for_small_supergenre(neo4j, super_genre_id):
-
     result = neo4j.run("""
         MATCH (s:SuperGenre{id: $superGenre})--(t:Track)
         MERGE (p:Playlist{id: $superGenre})
-        SET p.name = '""" + playlist_name_prefix + """'+ " " + s.name 
         SET p.energy = s.energy
         SET p.valence = s.valence
         CREATE (t)-[:IN_PLAYLIST]->(p)
