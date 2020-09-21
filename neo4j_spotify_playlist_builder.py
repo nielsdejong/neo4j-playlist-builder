@@ -17,12 +17,13 @@ scope = 'playlist-modify-private'                         # Spotify scope requir
 redirect_uri = 'http://localhost:8888/callback'           # Spotify callback url. Set to localhost for development.
 cache_path = "spotify_cache.tmp"                          # Where spotify caches the session variables.
 create_constraints = True                                 # Whether to create constraints.
-write_to_spotify = True  # Whether to write back the generated playlists to spotify.
-plot_kmeans_clusters = False  # Whether to plot the kmeans clusters used for playlists.
-min_playlist_size = 40  # Cut off for playlists to be grouped as 'misc'
-playlist_split_limit = 160  # min size for playlists to be chopped up in smaller ones.
-playlist_desc = 'Generated using neo4j-playlist-builder.'  # Description of the generated playlists.
-playlist_keywords_count = 3  # Number of keywords to use in dynamic playlist names.
+write_to_spotify = True                                   # Whether to write back the generated playlists to spotify.
+plot_kmeans_clusters = False                              # Whether to plot the kmeans clusters used for playlists.
+min_playlist_size = 40                                    # Cut off for playlists to be grouped as 'misc'
+playlist_split_limit = 160                                # min size for playlists to be chopped up in smaller ones.
+playlist_desc = 'Generated using neo4j-playlist-builder.' # Description of the generated playlists.
+playlist_keywords_count = 3                               # Number of keywords to use in dynamic playlist names.
+filtered_keywords = '"pop", "mellow", "new", "rock", "folk"' # generic keywords to not include in playlist names
 spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=client, client_secret=secret))
 
 
@@ -77,6 +78,7 @@ def load_graph_using_spotify_api():
 
 
 def name_playlists_based_on_keywords(neo4j):
+
     neo4j.run("""    
     MATCH (g:Genre)<-[:HAS_GENRE]-(a:Artist)<-[:HAS_ARTIST]-(t:Track)
     WITH  g, t
@@ -85,7 +87,7 @@ def name_playlists_based_on_keywords(neo4j):
      WITH p, reduce(allwords = [], n IN names | allwords + n) AS keywords
      UNWIND keywords as keyword
      WITH p, keyword
-     WHERE not keyword  in ["pop", "mellow","new", "rock", "folk"]
+     WHERE not keyword  in [""" + filtered_keywords + """]
      WITH p, keyword, count(*) as wordcount order by wordcount desc
     WITH p, reduce(name = '', n IN collect(keyword)[0..""" + str(playlist_keywords_count) + """]| name + ' ' + n) AS name
     WITH p, name,
