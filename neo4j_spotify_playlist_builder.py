@@ -163,24 +163,24 @@ def cluster_genres_with_gds(neo4j):
 def get_tracks():
     results = spotify.playlist(playlist_uri)['tracks']
     items = {}
-
     while results['next'] or results['previous'] is None:
         for track in results["items"]:
             if track['track']['id']:
-                track['track']['artists'] = [artist['id'] for artist in track['track']['artists']]
-                track['track']['album'] = track['track']['album']['id']
+                track['track']['artists'] = [artist if type(artist) == str else artist['id'] for artist in track['track']['artists']]
+                track['track']['album'] = track['track']['album'] if type(track['track']['album']) == str else track['track']['album']['id']
                 track['track']['external_ids'] = None
                 track['track']['external_urls'] = None
                 items[track['track']['id']] = track['track']
-        if results['next']:
-            results = spotify.next(results)
+        if not results['next']:
+            break
     return items
-
 
 def get_track_audio_features(tracks, page_size=100):
     page_count = len(tracks) / page_size
     for i in range(int(page_count) + 1):
         ids = list(tracks.keys())[i * page_size:(i + 1) * page_size]
+        if len(ids) == 0:
+            break
         audio_features = spotify.audio_features(tracks=ids)
         for track_features in audio_features:
             track_id = track_features['id']
