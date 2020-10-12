@@ -36,7 +36,8 @@ def load_graph_using_spotify_api():
     neo4j.run("MATCH (n) DETACH DELETE n;")
 
     print("creating tracks...")
-    tracks = get_tracks()
+    tracks = ck
+    cks()
     tracks = get_track_audio_features(tracks)
     neo4j.run("UNWIND $tracks as track CREATE (t:Track{id: track.id}) SET t = track",
               parameters={'tracks': list(tracks.values())})
@@ -183,6 +184,8 @@ def get_track_audio_features(tracks, page_size=100):
             break
         audio_features = spotify.audio_features(tracks=ids)
         for track_features in audio_features:
+            if track_features is None:
+                continue
             track_id = track_features['id']
             for feature, value in track_features.items():
                 if feature != 'type':
