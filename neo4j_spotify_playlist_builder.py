@@ -6,34 +6,32 @@ import pandas as pd
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 # ------------------------------------ Configuration parameters ------------------------------------ #
-user_id = "[ADD YOUR SPOTIFY USER ID HERE]"               # Spotify user ID.
-client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"              # Spotify client ID.
-secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"          # Spotify client secret.
-playlist_uri = "[ADD YOUR PUBLIC PLAYLIST TO SORT HERE]"  # original public playlist with songs to be sorted.
-neo4j_url = "bolt://localhost:7687"                       # bolt url of the neo4j database.
-neo4j_username = "neo4j"                                  # neo4j username. defaults to 'neo4j'.
-neo4j_password = "neo"                                    # neo4j password.
-scope = 'playlist-modify-private'                         # Spotify scope required to manage playlists.
-redirect_uri = 'http://localhost:8888/callback'           # Spotify callback url. Set to localhost for development.
-cache_path = "spotify_cache.tmp"                          # Where spotify caches the session variables.
-create_constraints = True                                 # Whether to create constraints.
-write_to_spotify = True                                   # Whether to write back the generated playlists to spotify.
-plot_kmeans_clusters = False                              # Whether to plot the kmeans clusters used for playlists.
-min_playlist_size = 40                                    # Cut off for playlists to be grouped as 'misc'
-playlist_split_limit = 160                                # min size for playlists to be chopped up in smaller ones.
-playlist_desc = 'Generated using neo4j-playlist-builder.' # Description of the generated playlists.
-playlist_keywords_count = 3                               # Number of keywords to use in dynamic playlist names.
-filtered_keywords = '"pop", "mellow", "new", "rock", "folk"' # generic keywords to not include in playlist names
+user_id = "[ADD YOUR SPOTIFY USER ID HERE]"                         # Spotify user ID.
+playlist_uri = "[ADD YOUR PUBLIC PLAYLIST TO SORT HERE]"            # original playlist with songs to be sorted.
+client = "[ADD YOUR SPOTIFY CLIENT ID HERE]"                        # Spotify client ID.
+secret = "[ADD YOUR SPOTIFY CLIENT SECRET HERE]"                    # Spotify client secret.
+neo4j_url = "bolt://localhost:7687"                                 # bolt url of the neo4j database.
+neo4j_username = "neo4j"                                            # neo4j username. defaults to 'neo4j'.
+neo4j_password = "neo"                                              # neo4j password.
+scope = 'playlist-modify-private'                                   # Spotify scope required to manage playlists.
+redirect_uri = 'http://localhost:8888/callback'                     # Spotify callback url. Set to localhost for development.
+cache_path = "spotify_cache.tmp"                                    # Where spotify caches the session variables.
+create_constraints = True                                           # Whether to create constraints.
+write_to_spotify = True                                             # Whether to write back the generated playlists to spotify.
+plot_kmeans_clusters = False                                        # Whether to plot the kmeans clusters used for playlists.
+min_playlist_size = 40                                              # Cut off for playlists to be grouped as 'misc'
+playlist_split_limit = 160                                          # min size for playlists to be chopped up in smaller ones.
+playlist_desc = 'Generated using neo4j-playlist-builder.'           # Description of the generated playlists.
+playlist_keywords_count = 3                                         # Number of keywords to use in dynamic playlist names.
+filtered_keywords = '"and", "pop", "mellow", "new", "rock", "folk"' # generic keywords to not include in playlist names
+playlist_prefix = '[NPB]'                                           # Prefix to put in front of your spotify playlists.
 spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=client, client_secret=secret))
 
 
 def load_graph_using_spotify_api():
     neo4j = create_neo4j_session(url=neo4j_url, user=neo4j_username, password=neo4j_password)
-    if create_constraints:
-        neo4j.run("CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE")
-        neo4j.run("CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE")
-        neo4j.run("CREATE CONSTRAINT ON (p:Playlist) ASSERT p.name IS UNIQUE")
-    neo4j.run("MATCH (n) DETACH DELETE n;")
+    print("dropping and creating constraints...")
+    recreate_contraints(neo4j)
 
     print("creating tracks...")
     tracks = get_tracks()
@@ -67,7 +65,6 @@ def load_graph_using_spotify_api():
     print("Creating playlists based on supergenres and song properties...")
     generate_playlists(neo4j)
 
-    # Time for cypher magic - give our communities some names
     print("Naming playlists...")
     name_playlists_based_on_keywords(neo4j)
 
@@ -77,8 +74,22 @@ def load_graph_using_spotify_api():
     print("Done!")
 
 
-def name_playlists_based_on_keywords(neo4j):
+def recreate_contraints(neo4j):
+    # recreate constraints / indices and clear existing database.
+    results = neo4j.run("CALL db.constraints")
+    for constraint in results:
+        result = neo4j.run("DROP " + constraint['description'])
+    neo4j.run("CREATE CONSTRAINT ON (g:Genre) ASSERT g.name IS UNIQUE")
+    neo4j.run("CREATE CONSTRAINT ON (p:Playlist) ASSERT p.name IS UNIQUE")
+    neo4j.run("CREATE CONSTRAINT ON (a:Album) ASSERT a.id IS UNIQUE")
+    neo4j.run("CREATE CONSTRAINT ON (s:SuperGenre) ASSERT s.id IS UNIQUE")
+    neo4j.run("CREATE CONSTRAINT ON (a:Artist) ASSERT a.id IS UNIQUE")
+    neo4j.run("CREATE CONSTRAINT ON (t:Track) ASSERT t.id IS UNIQUE")
+    neo4j.run("MATCH (n) DETACH DELETE n;")
 
+
+def name_playlists_based_on_keywords(neo4j):
+    # Time for cypher magic - give our communities some names
     neo4j.run("""    
     MATCH (g:Genre)<-[:HAS_GENRE]-(a:Artist)<-[:HAS_ARTIST]-(t:Track)
     WITH  g, t
@@ -95,7 +106,7 @@ def name_playlists_based_on_keywords(neo4j):
     WHEN p.energy <= 0.75 THEN 'active' ELSE 'energetic' END AS energy,
     CASE WHEN p.valence <= 0.25 THEN 'heavy-hearted' WHEN p.valence <= 0.50 THEN 'low'
     WHEN p.valence <= 0.75 THEN 'lively' ELSE 'cheerful' END AS mood
-    SET p.name = "[NPB] " + apoc.text.capitalizeAll(name) + " - " + energy +", " + mood
+    SET p.name = \"""" + playlist_prefix + """ \" + apoc.text.capitalizeAll(name) + " - " + energy +", " + mood
     """)
 
 
@@ -163,17 +174,20 @@ def cluster_genres_with_gds(neo4j):
 def get_tracks():
     results = spotify.playlist(playlist_uri)['tracks']
     items = {}
-
     while results['next'] or results['previous'] is None:
         for track in results["items"]:
             if track['track']['id']:
-                track['track']['artists'] = [artist['id'] for artist in track['track']['artists']]
-                track['track']['album'] = track['track']['album']['id']
-                track['track']['external_ids'] = None
-                track['track']['external_urls'] = None
+                track['track']['artists'] = [artist if type(artist) == str else artist['id'] for artist in
+                                             track['track']['artists']]
+                track['track']['album'] = track['track']['album'] if type(track['track']['album']) == str else \
+                    track['track']['album']['id']
                 items[track['track']['id']] = track['track']
-        if results['next']:
-            results = spotify.next(results)
+            for field in track['track']:
+                if track is not None and type(track['track'][field]) == dict:
+                    track['track'][field] = None
+        if not results['next']:
+            break
+        results = spotify.next(results)
     return items
 
 
@@ -181,8 +195,12 @@ def get_track_audio_features(tracks, page_size=100):
     page_count = len(tracks) / page_size
     for i in range(int(page_count) + 1):
         ids = list(tracks.keys())[i * page_size:(i + 1) * page_size]
+        if len(ids) == 0:
+            break
         audio_features = spotify.audio_features(tracks=ids)
         for track_features in audio_features:
+            if track_features is None:
+                continue
             track_id = track_features['id']
             for feature, value in track_features.items():
                 if feature != 'type':
