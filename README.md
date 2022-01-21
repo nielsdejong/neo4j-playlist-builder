@@ -30,7 +30,8 @@ Steps:
     neo4j_username = "neo4j"
     neo4j_password = "neo" 
     ```
-    Keep in mind this application clears your database, so best use a fresh DB.
+    Keep in mind this application clears your database, so best use a fresh DB. 
+    **Ensure that your Neo4j installation has the Neo4j Graph Data Science plugin installed!**
 6. Install python dependencies in `requirements.txt`.
 7. Run `neo4j_spotify_playlist_builder.py` and watch the magic happen!
 
